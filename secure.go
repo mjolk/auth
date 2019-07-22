@@ -28,6 +28,8 @@ type AuthConfig struct {
 	Expiration          time.Duration
 	LoadLogin           userLoadFunc
 	FindLogin           userFindFunc
+	PrivateKeyFile      string
+	PublicKeyFile       string
 }
 
 type Login interface {
@@ -51,6 +53,8 @@ var (
 		TTL:                 ttl,
 		Issuer:              "mycompany.com",
 		Expiration:          time.Duration(1) * time.Hour,
+		PrivateKeyFile:      "server.key",
+		PublicKeyFile:       "server.crt",
 	}
 	privKey   *rsa.PrivateKey
 	pubKey    *rsa.PublicKey
@@ -139,7 +143,7 @@ func Setup(_ context.Context) {
 func setPublicKey() (err error) {
 	var data []byte
 
-	data, err = ioutil.ReadFile("server.crt")
+	data, err = ioutil.ReadFile(Config.PublicKeyFile)
 	if err != nil {
 		return
 	}
@@ -155,7 +159,7 @@ func setPublicKey() (err error) {
 func setPrivateKey() (err error) {
 	var data []byte
 
-	data, err = ioutil.ReadFile("server.key")
+	data, err = ioutil.ReadFile(Config.PrivateKeyFile)
 	if err != nil {
 		return
 	}
@@ -215,14 +219,15 @@ func Context(ctx context.Context, user Login) context.Context {
 
 func checkHeader(header string) (string, error) {
 	herr := fmt.Errorf("incorrect authorization header")
+	hlen := len(Config.AuthorizationHeader)
 	if header == "" {
 		return "", herr
 	}
-	if len(header) < 15 {
+	if len(header) < hlen {
 		return "", herr
 	}
-	if strings.ToUpper(header[:15]) != authorizationHeader {
+	if strings.ToUpper(header[:hlen]) != authorizationHeader {
 		return "", herr
 	}
-	return header[15:], nil
+	return header[hlen:], nil
 }
