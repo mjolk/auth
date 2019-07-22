@@ -45,7 +45,7 @@ func validate(
 	if login.Expires().Before(time.Now()) {
 		return context.TODO(), fmt.Errorf(" expired: %s", login.Expires().String())
 	}
-	return Context(ctx, login), nil
+	return authContext(ctx, login), nil
 }
 
 // Authorize authorize request decorator
@@ -86,13 +86,16 @@ func Authenticate(
 	ctx context.Context,
 	auth *Authentication,
 ) (*AuthenticationResponse, error) {
-	if !emailMatcher.MatchString(auth.Email) {
+	if !authConfig.LoginValidator.MatchString(auth.Email) {
 		return nil, fmt.Errorf(
 			"Malformed e-mail address %s",
 			auth.Email,
 		)
 	}
-	login, err := Config.FindLogin(ctx, auth.Email)
+	login, err := authConfig.FindLogin(ctx, auth.Email)
+	if err != nil {
+		return nil, fmt.Errorf("No login for %s", auth.Email)
+	}
 	if err := bcrypt.CompareHashAndPassword(
 		login.Password(),
 		[]byte(auth.Password),
@@ -101,7 +104,7 @@ func Authenticate(
 	}
 	token, err := createToken(
 		login.ID(),
-		time.Now().Add(Config.Expiration),
+		time.Now().Add(authConfig.Expiration),
 	)
 	if err != nil {
 		return nil, err

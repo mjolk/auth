@@ -40,27 +40,17 @@ type Login interface {
 }
 
 const (
-	ttl                 = 168
-	authorizationHeader = "BP-REGISTRATION"
-	emailRegex          = `(\w[-._\w]*\w@\w[-._\w]*\w\.\w{2,3})`
+	emailRegex = `(\w[-._\w]*\w@\w[-._\w]*\w\.\w{2,3})`
 )
 
 var (
 	emailMatcher, _ = regexp.Compile(emailRegex) //should not return error O-o
-	Config          = AuthConfig{
-		AuthorizationHeader: authorizationHeader,
-		LoginValidator:      emailMatcher,
-		TTL:                 ttl,
-		Issuer:              "mycompany.com",
-		Expiration:          time.Duration(1) * time.Hour,
-		PrivateKeyFile:      "server.key",
-		PublicKeyFile:       "server.crt",
-	}
-	privKey   *rsa.PrivateKey
-	pubKey    *rsa.PublicKey
-	encrypter jose.Encrypter
-	signer    jose.Signer
-	uKey      userKey = 1
+	authConfig      = AuthConfig{LoginValidator: emailMatcher}
+	privKey         *rsa.PrivateKey
+	pubKey          *rsa.PublicKey
+	encrypter       jose.Encrypter
+	signer          jose.Signer
+	uKey            userKey = 1
 )
 
 // Authentication authentication data user
@@ -84,7 +74,23 @@ func User(ctx context.Context) Login {
 	return user
 }
 
-func Setup(_ context.Context) {
+func mergeConfig(config AuthConfig) {
+	if config.LoginValidator != nil {
+		authConfig.LoginValidator = config.LoginValidator
+	}
+	authConfig.TTL = config.TTL
+	authConfig.AuthorizationHeader = config.AuthorizationHeader
+	authConfig.Expiration = config.Expiration
+	authConfig.Audience = config.Audience
+	authConfig.PrivateKeyFile = config.PrivateKeyFile
+	authConfig.PublicKeyFile = config.PublicKeyFile
+	authConfig.Issuer = config.Issuer
+	authConfig.LoadLogin = config.LoadLogin
+	authConfig.FindLogin = config.FindLogin
+}
+
+func Setup(config AuthConfig) {
+	mergeConfig(config)
 	errCh := make(chan error)
 	loaded := make(chan struct{})
 	go func() {
@@ -143,7 +149,7 @@ func Setup(_ context.Context) {
 func setPublicKey() (err error) {
 	var data []byte
 
-	data, err = ioutil.ReadFile(Config.PublicKeyFile)
+	data, err = ioutil.ReadFile(authConfig.PublicKeyFile)
 	if err != nil {
 		return
 	}
@@ -159,7 +165,7 @@ func setPublicKey() (err error) {
 func setPrivateKey() (err error) {
 	var data []byte
 
-	data, err = ioutil.ReadFile(Config.PrivateKeyFile)
+	data, err = ioutil.ReadFile(authConfig.PrivateKeyFile)
 	if err != nil {
 		return
 	}
@@ -175,9 +181,9 @@ func setPrivateKey() (err error) {
 func createToken(id uuid.UUID, expires time.Time) (string, error) {
 	cl := jwt.Claims{
 		Subject:  id.String(),
-		Issuer:   Config.Issuer,
+		Issuer:   authConfig.Issuer,
 		Expiry:   jwt.NewNumericDate(expires),
-		Audience: Config.Audience,
+		Audience: authConfig.Audience,
 	}
 	return jwt.SignedAndEncrypted(signer, encrypter).
 		Claims(cl).CompactSerialize()
@@ -200,9 +206,9 @@ func validateToken(
 		return nil, err
 	}
 	if err := cl.Validate(jwt.Expected{
-		Issuer:   Config.Issuer,
+		Issuer:   authConfig.Issuer,
 		Time:     time.Now(),
-		Audience: Config.Audience,
+		Audience: authConfig.Audience,
 	}); err != nil {
 		return nil, err
 	}
@@ -210,23 +216,23 @@ func validateToken(
 	if err != nil {
 		return nil, err
 	}
-	return Config.LoadLogin(ctx, id)
+	return authConfig.LoadLogin(ctx, id)
 }
 
-func Context(ctx context.Context, user Login) context.Context {
+func authContext(ctx context.Context, user Login) context.Context {
 	return context.WithValue(ctx, uKey, user)
 }
 
 func checkHeader(header string) (string, error) {
 	herr := fmt.Errorf("incorrect authorization header")
-	hlen := len(Config.AuthorizationHeader)
+	hlen := len(authConfig.AuthorizationHeader)
 	if header == "" {
 		return "", herr
 	}
 	if len(header) < hlen {
 		return "", herr
 	}
-	if strings.ToUpper(header[:hlen]) != authorizationHeader {
+	if strings.ToUpper(header[:hlen]) != authConfig.AuthorizationHeader {
 		return "", herr
 	}
 	return header[hlen:], nil
