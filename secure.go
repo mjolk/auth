@@ -27,13 +27,13 @@ type AuthConfig struct {
 	Audience            []string
 	Expiration          time.Duration
 	LoadLogin           userLoadFunc
-	SearchLogin         userFindFunc
+	FindLogin           userFindFunc
 }
 
 type Login interface {
 	ID() uuid.UUID
 	Password() []byte
-	Name() string
+	Email() string
 	Expires() time.Time
 }
 
@@ -50,7 +50,7 @@ var (
 		LoginValidator:      emailMatcher,
 		TTL:                 ttl,
 		Issuer:              "mycompany.com",
-		Expiration:          60 * time.Minute,
+		Expiration:          time.Duration(1) * time.Hour,
 	}
 	privKey   *rsa.PrivateKey
 	pubKey    *rsa.PublicKey
@@ -82,20 +82,20 @@ func User(ctx context.Context) Login {
 
 func Setup(_ context.Context) {
 	errCh := make(chan error)
-	loaded := make(chan int)
+	loaded := make(chan struct{})
 	go func() {
 		if err := setPublicKey(); err != nil {
 			errCh <- err
 			return
 		}
-		loaded <- 1
+		loaded <- struct{}{}
 	}()
 	go func() {
 		if err := setPrivateKey(); err != nil {
 			errCh <- err
 			return
 		}
-		loaded <- 1
+		loaded <- struct{}{}
 	}()
 	for i := 0; i < 2; i++ {
 		select {

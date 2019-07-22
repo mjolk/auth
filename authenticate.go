@@ -92,7 +92,7 @@ func Authenticate(
 			auth.Email,
 		)
 	}
-	login, err := Config.SearchLogin(ctx, auth.Email)
+	login, err := Config.FindLogin(ctx, auth.Email)
 	if err := bcrypt.CompareHashAndPassword(
 		login.Password(),
 		[]byte(auth.Password),
@@ -101,7 +101,7 @@ func Authenticate(
 	}
 	token, err := createToken(
 		login.ID(),
-		time.Now().Add(time.Duration(1)*time.Hour),
+		time.Now().Add(Config.Expiration),
 	)
 	if err != nil {
 		return nil, err
